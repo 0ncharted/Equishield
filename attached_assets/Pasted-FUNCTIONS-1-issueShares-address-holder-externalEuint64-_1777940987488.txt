@@ -1,0 +1,39 @@
+FUNCTIONS:
+1. issueShares(address holder, externalEuint64 inputShares, bytes calldata proof, externalEuint64 inputPrice, bytes calldata priceProof)
+   - Admin only
+   - Creates shareholder entry with encrypted share count and price
+   - FHE.allowThis() + FHE.allow(encryptedShares, holder) so holder can see their own
+   - Emits SharesIssued(holder, timestamp)
+
+2. vestShares(address holder, externalEuint64 inputVestedAmount, bytes calldata proof)
+   - Admin only
+   - Updates encryptedVestedShares using FHE.add()
+   - FHE.allow(encryptedVestedShares, holder)
+   - Emits SharesVested(holder, timestamp)
+
+3. transferShares(address to, externalEuint64 inputAmount, bytes calldata proof)
+   - Shareholder calls this to transfer their own shares
+   - Use FHE.sub() on sender's encryptedShares, FHE.add() on receiver's
+   - FHE.allow() for both parties on their respective updated values
+   - Emits SharesTransferred(from, to, timestamp) — no amount in event
+
+4. getMyShares() external view returns (euint64)
+   - Returns caller's encrypted share handle — only works if they were granted access
+
+5. getMyVestedShares() external view returns (euint64)
+   - Returns caller's encrypted vested share handle
+
+6. vote(uint256 proposalId, externalEuint64 inputWeight, bytes calldata proof)
+   - Shareholder votes on a proposal with their voting weight (proportional to shares) — encrypted
+   - Store mapping(uint256 => mapping(address => euint64)) votes
+   - Emit Voted(proposalId, voter) — no weight in event
+
+7. regulatorView(address holder) external — owner only
+   - Returns all encrypted handles for a specific holder for compliance decryption
+
+CRITICAL FHEVM RULES:
+- NEVER use euint in if/require — use FHE.select() for conditional encrypted logic
+- ALWAYS FHE.allowThis() after storing encrypted state
+- ALWAYS FHE.allow(value, address) for every party needing access
+- Use FHE.fromExternal(handle, proof) to convert inputs — never store externalEuint64 directly
+- Extend ZamaEthereumConfig for Sepolia

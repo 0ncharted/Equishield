@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "EquiShield"
+version = "1.0.0"
+id = "artifacts/equishield"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18845
+
+[services.development]
+run = "pnpm --filter @workspace/equishield run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/equishield", "run", "build" ]
+publicDir = "artifacts/equishield/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18845"
+BASE_PATH = "/"
