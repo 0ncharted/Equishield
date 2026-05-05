@@ -1,41 +1,62 @@
 /**
  * fhevmjs client-side FHE encryption utilities.
  *
- * All share counts and prices must be encrypted client-side before sending
- * to the EquiShield contract. This module wraps fhevmjs instance creation
- * and provides helpers for generating encrypted inputs with ZK proofs.
+ * Initializes eagerly on module load so the instance is ready before any
+ * button is clicked. Exposes a status listener so the UI can reflect state.
  */
 import { createInstance, type FhevmInstance } from "fhevmjs/bundle";
 
+export type FhevmStatus = "initializing" | "ready" | "error";
+
+const SEPOLIA_RPC = (import.meta as any).env?.VITE_INFURA_API_KEY
+  ? `https://sepolia.infura.io/v3/${(import.meta as any).env.VITE_INFURA_API_KEY}`
+  : "https://ethereum-sepolia-rpc.publicnode.com";
+
 let fhevmInstance: FhevmInstance | null = null;
-let initPromise: Promise<FhevmInstance> | null = null;
+let fhevmStatus: FhevmStatus = "initializing";
+const statusListeners: Set<(s: FhevmStatus) => void> = new Set();
 
-/**
- * Returns a singleton fhevmjs instance for Sepolia (Zama gateway).
- * Safe to call multiple times — only creates the instance once.
- */
+function setStatus(s: FhevmStatus) {
+  fhevmStatus = s;
+  statusListeners.forEach((fn) => fn(s));
+}
+
+export function getFhevmStatus(): FhevmStatus {
+  return fhevmStatus;
+}
+
+export function onFhevmStatusChange(fn: (s: FhevmStatus) => void): () => void {
+  statusListeners.add(fn);
+  fn(fhevmStatus);
+  return () => statusListeners.delete(fn);
+}
+
+// Eager singleton initialization — runs once when the module is imported.
+const _initPromise: Promise<void> = (async () => {
+  try {
+    fhevmInstance = await createInstance({
+      chainId: 11155111,
+      networkUrl: SEPOLIA_RPC,
+      gatewayUrl: "https://gateway.zama.ai",
+      kmsContractAddress: "0x9D6891A6240D6130c54ae243d8005063D05fE14b",
+      aclContractAddress: "0xFee8407e2f5e3Ee68ad77cAE98c434e637f516EC",
+    });
+    setStatus("ready");
+  } catch (err) {
+    console.error("[fhevmjs] init failed:", err);
+    setStatus("error");
+  }
+})();
+
 export async function getFhevmInstance(): Promise<FhevmInstance> {
-  if (fhevmInstance) return fhevmInstance;
-  if (initPromise) return initPromise;
-
-  initPromise = createInstance({
-    kmsContractAddress: "0x9D6891A6240D6130c54ae243d8005063D05fE14b",
-    aclContractAddress: "0xFee8407e2f5e3Ee68ad77cAE98c434e637f516EC",
-    network: window.ethereum,
-    gatewayUrl: "https://gateway.zama.ai",
-    chainId: 11155111,
-  }).then((instance) => {
-    fhevmInstance = instance;
-    initPromise = null;
-    return instance;
-  });
-
-  return initPromise;
+  await _initPromise;
+  if (!fhevmInstance) throw new Error("FHE instance failed to initialize");
+  return fhevmInstance;
 }
 
 /**
- * Encrypt a uint64 value for a specific contract address.
- * Returns { handle, proof } ready to pass to contract functions.
+ * Encrypt a uint64 value for a specific contract + user address pair.
+ * Returns { handle, proof } ready to pass to contract write functions.
  */
 export async function encryptUint64(
   value: bigint,
@@ -43,9 +64,9 @@ export async function encryptUint64(
   userAddress: string
 ): Promise<{ handle: `0x${string}`; proof: `0x${string}` }> {
   const instance = await getFhevmInstance();
-  const encrypted = await instance.createEncryptedInput(contractAddress, userAddress);
-  encrypted.add64(value);
-  const result = await encrypted.encrypt();
+  const input = instance.createEncryptedInput(contractAddress, userAddress);
+  input.add64(value);
+  const result = await input.encrypt();
   return {
     handle: result.handles[0] as `0x${string}`,
     proof: `0x${Buffer.from(result.inputProof).toString("hex")}` as `0x${string}`,
@@ -53,22 +74,32 @@ export async function encryptUint64(
 }
 
 /**
- * Decrypt a euint64 handle returned from the contract.
- * The caller must have been granted FHE.allow() access to this handle.
+ * Decrypt a euint64 handle via Zama Gateway re-encryption.
+ * Requires the caller to have been granted FHE.allow() access on-chain.
+ * Prompts the user to sign an EIP-712 reencryption request.
  */
 export async function decryptUint64(
   handle: bigint,
   contractAddress: string,
-  userAddress: string,
-  provider: { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> }
+  userAddress: string
 ): Promise<bigint> {
+  if (!handle || handle === 0n) throw new Error("No shares found for this address");
   const instance = await getFhevmInstance();
-  const reEncrypted = await instance.reencrypt(
+
+  const { publicKey, privateKey } = instance.generateKeypair();
+  const eip712 = instance.createEIP712(publicKey, contractAddress);
+
+  const signature = await (window as any).ethereum.request({
+    method: "eth_signTypedData_v4",
+    params: [userAddress, JSON.stringify(eip712)],
+  });
+
+  return await instance.reencrypt(
     handle,
-    userAddress,
+    privateKey,
+    publicKey,
+    signature as string,
     contractAddress,
-    undefined,
-    { request: provider.request }
+    userAddress
   );
-  return reEncrypted;
 }

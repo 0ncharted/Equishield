@@ -1,0 +1,46 @@
+There are several issues to fix across all dashboards. Fix everything in this single pass:
+
+CRITICAL FIX 1 — Encryption failing everywhere:
+The error "Encryption failed, cannot read properties of undefined, reading createEncryptedInput" means fhevmjs is not initializing correctly before being called. Fix this:
+- Create a singleton fhevmjs instance in src/lib/fhevm.ts that initializes once on app load
+- Before any encrypt call, check if the instance exists and is ready
+- If not ready, show "Initializing FHE..." and wait — do not attempt encryption
+- The instance needs the contract address and user address at creation time
+- Use fhevmjs/bundle import: import { createInstance } from 'fhevmjs/bundle'
+- Initialize with: const instance = await createInstance({ chainId: 11155111, networkUrl: your_rpc_url })
+- Export a getFhevmInstance() function that returns the initialized instance
+
+CRITICAL FIX 2 — Batch share issuance:
+Currently the Admin can only issue shares one address at a time. Add a "Batch Issue Shares" section below the single-issue form that:
+- Has a textarea where admin pastes multiple entries, one per line, format: address,shares,pricePerShare
+- Example: 0xABC...,1000,5
+- Button "Batch Encrypt & Issue" — loops through each line, encrypts each pair of values, calls issueShares() sequentially, shows progress (1/3 done, 2/3 done, 3/3 done)
+- Shows a summary when complete: X shares issued successfully, Y failed
+
+CRITICAL FIX 3 — Batch vesting:
+Same pattern — add a "Batch Vest" section with textarea input:
+- Format per line: address,vestedAmount
+- Processes sequentially with progress indicator
+- Negative numbers like -35 must be rejected with "Vested amount must be positive"
+
+CRITICAL FIX 4 — Shareholder decrypt balance:
+The "Decrypt Balance" button is not working. Fix this:
+- When clicked, call getMyShares() on the contract to get the encrypted euint64 handle
+- Then use fhevmjs userDecrypt to request decryption via the Zama Gateway
+- Display the decrypted number as "Your shares: X"
+- If the wallet has no shares, show "No shares found for this address"
+
+CRITICAL FIX 5 — Investor dashboard grayed out:
+The "Decrypt Records" button is disabled. Fix this:
+- Same pattern as shareholder decrypt — call getMyShares() and getMyVestedShares()
+- Decrypt both handles and display: "Total shares: X | Vested: Y | Unvested: Z"
+- Enable the button whenever a wallet is connected
+
+CRITICAL FIX 6 — Audit lookup failing:
+The "Query Failed" error when looking up a holder address is because the contract isn't deployed yet and the address in contract.ts is still a placeholder. This is expected — do NOT remove the error handling, but change the error message to: "Contract not yet deployed. Deploy to Sepolia first, or enter a valid shareholder address after deployment."
+Also show: "Connected as: [wallet address]" and "Contract: [address from contract.ts]" so judges can see the wiring is correct.
+
+AFTER ALL FIXES:
+- Make sure fhevmjs initializes on page load, not on first button click
+- Show a small green dot + "FHE Ready" in the header when initialized, red dot + "FHE Initializing" when not
+- Restart the app and confirm no console errors
