@@ -72,7 +72,9 @@ export default function ShareholderPage() {
   async function onTransferSubmit(data: z.infer<typeof transferSchema>) {
     if (!address) return toast({ title: "Wallet not connected", variant: "destructive" });
     try {
+      console.log("[transferShares] encrypting amount:", data.amount);
       const encryptedAmount = await encryptUint64(BigInt(data.amount), EQUISHIELD_ADDRESS, address);
+      console.log("[transferShares] encryption successful, handle:", encryptedAmount.handle);
       writeContract({
         address: EQUISHIELD_ADDRESS,
         abi: EquiShieldABI,
@@ -80,6 +82,7 @@ export default function ShareholderPage() {
         args: [data.to as `0x${string}`, encryptedAmount.handle, encryptedAmount.proof],
       });
     } catch (err: any) {
+      console.error("[transferShares] failed:", err);
       toast({ title: "Encryption failed", description: err.message, variant: "destructive" });
     }
   }

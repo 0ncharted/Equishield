@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { EQUISHIELD_ADDRESS } from '@/lib/contract';
 import EquiShieldABI from '@/abi/EquiShield.json';
-import { encryptUint64 } from '@/lib/fhevm';
+import { encryptUint64, encryptTwoUint64 } from '@/lib/fhevm';
 import { useFhevmStatus } from '@/hooks/useFhevmStatus';
 import Layout from '@/components/layout';
 import { Button } from '@/components/ui/button';
@@ -71,17 +71,19 @@ export default function AdminPage() {
   async function onIssueSubmit(data: z.infer<typeof issueSharesSchema>) {
     if (!address) return toast({ title: "Wallet not connected", variant: "destructive" });
     try {
-      const encryptedShares = await encryptUint64(BigInt(data.shares), EQUISHIELD_ADDRESS, address);
-      const encryptedPrice = await encryptUint64(BigInt(data.price), EQUISHIELD_ADDRESS, address);
+      console.log("[issueShares] encrypting shares:", data.shares, "price:", data.price);
+      const enc = await encryptTwoUint64(BigInt(data.shares), BigInt(data.price), EQUISHIELD_ADDRESS, address);
+      console.log("[issueShares] encryption successful — handle0:", enc.handle0, "handle1:", enc.handle1);
       await writeContractAsync({
         address: EQUISHIELD_ADDRESS,
         abi: EquiShieldABI,
         functionName: 'issueShares',
-        args: [data.holder as `0x${string}`, encryptedShares.handle, encryptedShares.proof, encryptedPrice.handle, encryptedPrice.proof],
+        args: [data.holder as `0x${string}`, enc.handle0, enc.proof, enc.handle1, enc.proof],
       });
       toast({ title: "Shares Issued", description: `Transaction submitted for ${data.holder.slice(0, 10)}...` });
       issueForm.reset();
     } catch (err: any) {
+      console.error("[issueShares] failed:", err);
       toast({ title: "Failed", description: err.message, variant: "destructive" });
     }
   }
@@ -89,7 +91,9 @@ export default function AdminPage() {
   async function onVestSubmit(data: z.infer<typeof vestSharesSchema>) {
     if (!address) return toast({ title: "Wallet not connected", variant: "destructive" });
     try {
+      console.log("[vestShares] encrypting amount:", data.amount);
       const encryptedAmount = await encryptUint64(BigInt(data.amount), EQUISHIELD_ADDRESS, address);
+      console.log("[vestShares] encryption successful, handle:", encryptedAmount.handle);
       await writeContractAsync({
         address: EQUISHIELD_ADDRESS,
         abi: EquiShieldABI,
@@ -99,6 +103,7 @@ export default function AdminPage() {
       toast({ title: "Vesting Triggered", description: `Transaction submitted for ${data.holder.slice(0, 10)}...` });
       vestForm.reset();
     } catch (err: any) {
+      console.error("[vestShares] failed:", err);
       toast({ title: "Failed", description: err.message, variant: "destructive" });
     }
   }
@@ -133,16 +138,18 @@ export default function AdminPage() {
       }
 
       try {
-        const encShares = await encryptUint64(BigInt(Math.round(sharesN)), EQUISHIELD_ADDRESS, address);
-        const encPrice = await encryptUint64(BigInt(Math.round(priceN)), EQUISHIELD_ADDRESS, address);
+        console.log("[batchIssue] encrypting for", holderAddr, "shares:", sharesN, "price:", priceN);
+        const enc = await encryptTwoUint64(BigInt(Math.round(sharesN)), BigInt(Math.round(priceN)), EQUISHIELD_ADDRESS, address);
+        console.log("[batchIssue] encryption successful for", holderAddr);
         await writeContractAsync({
           address: EQUISHIELD_ADDRESS,
           abi: EquiShieldABI,
           functionName: 'issueShares',
-          args: [holderAddr as `0x${string}`, encShares.handle, encShares.proof, encPrice.handle, encPrice.proof],
+          args: [holderAddr as `0x${string}`, enc.handle0, enc.proof, enc.handle1, enc.proof],
         });
         results.push({ address: holderAddr, status: 'success' });
       } catch (err: any) {
+        console.error("[batchIssue] failed for", holderAddr, err);
         results.push({ address: holderAddr, status: 'failed', error: err.message?.slice(0, 80) });
       }
     }
