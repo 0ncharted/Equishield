@@ -15,7 +15,7 @@ pnpm workspace monorepo with two main components:
 
 - **Frontend**: React 19, Vite, Tailwind CSS v4, TypeScript
 - **Web3**: wagmi v2, viem v2, RainbowKit v2 (wallet connect + UI)
-- **FHE client**: fhevmjs v0.6.2 (using `fhevmjs/bundle` self-contained build)
+- **FHE client**: `@zama-fhe/relayer-sdk` v0.4.2 (aliased in vite.config.ts to `bundle/relayer-sdk-js.js`)
 - **Smart contract**: Solidity 0.8.24 + `@fhevm/solidity` v0.11.x (Zama FHEVM)
 - **Contract tooling**: Hardhat, TypeChain, ethers v6
 - **Target network**: Ethereum Sepolia testnet
@@ -61,9 +61,17 @@ Compiled artifacts output to `packages/hardhat/artifacts/` and TypeChain types t
 | `/investor` | Investor View | Vesting progress with FHE decrypt |
 | `/audit` | Audit & Compliance | Regulator lookup of encrypted ciphertexts |
 
+## Architecture Decisions
+
+- **`@zama-fhe/relayer-sdk` v0.4.2** replaces deprecated `fhevmjs` v0.6.2. Vite aliases `@zama-fhe/relayer-sdk/bundle` → `bundle/relayer-sdk-js.js` (ES module) to bypass thin `window.relayerSDK` wrapper. `optimizeDeps.exclude` prevents esbuild re-bundling.
+- **`relayerRouteVersion: 2`** is required — the relayer only serves valid FHE keys at `/v2/keyurl`; `/v1/keyurl` returns 404 (verified 2026-05-06).
+- **`thread: 0`** passed to `initSDK` disables SharedArrayBuffer threading, which isn't available behind Replit's proxy without COOP/COEP headers.
+- **`userDecrypt`** (new API) replaces the old `reencrypt`. Takes `HandleContractPair[]`, returns `ClearValues` keyed by 0x-prefixed bytes32 handle hex. Handle bigints from the chain are padded to 64 hex chars.
+- **WASM files** (`tfhe_bg.wasm`, `kms_lib_bg.wasm`, `workerHelpers.js`) are copied from `node_modules/@zama-fhe/relayer-sdk/bundle/` to `public/` — the bundle fetches them via absolute root paths (`/tfhe_bg.wasm`, etc.).
+
 ## Key Files
 
-- `artifacts/equishield/src/lib/fhevm.ts` — fhevmjs singleton + encrypt/decrypt helpers
+- `artifacts/equishield/src/lib/fhevm.ts` — relayer-sdk singleton + encrypt/decrypt helpers
 - `artifacts/equishield/src/lib/contract.ts` — contract address (update post-deploy)
 - `artifacts/equishield/src/lib/web3.ts` — wagmi/RainbowKit config with public Sepolia RPC
 - `artifacts/equishield/src/abi/EquiShield.json` — contract ABI for wagmi hooks

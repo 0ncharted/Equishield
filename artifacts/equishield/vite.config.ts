@@ -50,6 +50,12 @@ export default defineConfig({
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
       "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
+      // Point @zama-fhe/relayer-sdk/bundle to the real ES module bundle,
+      // bypassing the thin window.relayerSDK wrapper that bundle.js uses.
+      "@zama-fhe/relayer-sdk/bundle": path.resolve(
+        import.meta.dirname,
+        "node_modules/@zama-fhe/relayer-sdk/bundle/relayer-sdk-js.js"
+      ),
     },
     dedupe: ["react", "react-dom"],
   },
@@ -73,7 +79,9 @@ export default defineConfig({
     allowedHosts: true,
   },
   optimizeDeps: {
-    include: ["fhevmjs/bundle"],
+    // Exclude the real bundle from pre-bundling — it's already a self-contained
+    // bundle with WASM and workers; letting esbuild re-bundle it breaks WASM loading.
+    exclude: ["@zama-fhe/relayer-sdk/bundle"],
     esbuildOptions: {
       target: "es2020",
     },

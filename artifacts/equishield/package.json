@@ -76,5 +76,8 @@
     "wagmi": "^2.19.5",
     "wouter": "^3.3.5",
     "zod": "catalog:"
+  },
+  "dependencies": {
+    "@zama-fhe/relayer-sdk": "0.4.2"
   }
 }
