@@ -5,9 +5,35 @@
     "type": "constructor"
   },
   {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "handle",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "address",
+        "name": "sender",
+        "type": "address"
+      }
+    ],
+    "name": "SenderNotAllowedToUseHandle",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ZamaProtocolUnsupported",
+    "type": "error"
+  },
+  {
     "anonymous": false,
     "inputs": [
-      { "indexed": true, "internalType": "address", "name": "regulatorAddr", "type": "address" }
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "regulatorAddr",
+        "type": "address"
+      }
     ],
     "name": "RegulatorGranted",
     "type": "event"
@@ -15,8 +41,18 @@
   {
     "anonymous": false,
     "inputs": [
-      { "indexed": true, "internalType": "address", "name": "holder", "type": "address" },
-      { "indexed": false, "internalType": "uint256", "name": "timestamp", "type": "uint256" }
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "holder",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
     ],
     "name": "SharesIssued",
     "type": "event"
@@ -24,9 +60,24 @@
   {
     "anonymous": false,
     "inputs": [
-      { "indexed": true, "internalType": "address", "name": "from", "type": "address" },
-      { "indexed": true, "internalType": "address", "name": "to", "type": "address" },
-      { "indexed": false, "internalType": "uint256", "name": "timestamp", "type": "uint256" }
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
     ],
     "name": "SharesTransferred",
     "type": "event"
@@ -34,8 +85,18 @@
   {
     "anonymous": false,
     "inputs": [
-      { "indexed": true, "internalType": "address", "name": "holder", "type": "address" },
-      { "indexed": false, "internalType": "uint256", "name": "timestamp", "type": "uint256" }
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "holder",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
     ],
     "name": "SharesVested",
     "type": "event"
@@ -43,33 +104,176 @@
   {
     "anonymous": false,
     "inputs": [
-      { "indexed": true, "internalType": "uint256", "name": "proposalId", "type": "uint256" },
-      { "indexed": true, "internalType": "address", "name": "voter", "type": "address" }
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "proposalId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "voter",
+        "type": "address"
+      }
     ],
     "name": "Voted",
     "type": "event"
   },
   {
     "inputs": [],
-    "name": "owner",
-    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "name": "confidentialProtocolId",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
     "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [],
-    "name": "regulator",
-    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "name": "getMyShares",
+    "outputs": [
+      {
+        "internalType": "euint64",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getMyVestedShares",
+    "outputs": [
+      {
+        "internalType": "euint64",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
     "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [
-      { "internalType": "address", "name": "holder", "type": "address" },
-      { "internalType": "bytes32", "name": "inputShares", "type": "bytes32" },
-      { "internalType": "bytes", "name": "proof", "type": "bytes" },
-      { "internalType": "bytes32", "name": "inputPrice", "type": "bytes32" },
-      { "internalType": "bytes", "name": "priceProof", "type": "bytes" }
+      {
+        "internalType": "uint256",
+        "name": "i",
+        "type": "uint256"
+      }
+    ],
+    "name": "getShareholderAt",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getShareholderCount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_regulator",
+        "type": "address"
+      }
+    ],
+    "name": "grantRegulator",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "name": "hasVoted",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "holder",
+        "type": "address"
+      }
+    ],
+    "name": "isActiveShareholder",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "holder",
+        "type": "address"
+      },
+      {
+        "internalType": "externalEuint64",
+        "name": "inputShares",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes",
+        "name": "proof",
+        "type": "bytes"
+      },
+      {
+        "internalType": "externalEuint64",
+        "name": "inputPrice",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes",
+        "name": "priceProof",
+        "type": "bytes"
+      }
     ],
     "name": "issueShares",
     "outputs": [],
@@ -77,10 +281,158 @@
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "regulator",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
-      { "internalType": "address", "name": "holder", "type": "address" },
-      { "internalType": "bytes32", "name": "inputVestedAmount", "type": "bytes32" },
-      { "internalType": "bytes", "name": "proof", "type": "bytes" }
+      {
+        "internalType": "address",
+        "name": "holder",
+        "type": "address"
+      }
+    ],
+    "name": "regulatorView",
+    "outputs": [
+      {
+        "internalType": "euint64",
+        "name": "encShares",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "euint64",
+        "name": "encVestedShares",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "euint64",
+        "name": "encPrice",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "shareholderList",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "name": "shareholders",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "holder",
+        "type": "address"
+      },
+      {
+        "internalType": "euint64",
+        "name": "encryptedShares",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "euint64",
+        "name": "encryptedVestedShares",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "euint64",
+        "name": "encryptedPricePerShare",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bool",
+        "name": "isActive",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "internalType": "externalEuint64",
+        "name": "inputAmount",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes",
+        "name": "proof",
+        "type": "bytes"
+      }
+    ],
+    "name": "transferShares",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "holder",
+        "type": "address"
+      },
+      {
+        "internalType": "externalEuint64",
+        "name": "inputVestedAmount",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes",
+        "name": "proof",
+        "type": "bytes"
+      }
     ],
     "name": "vestShares",
     "outputs": [],
@@ -89,34 +441,21 @@
   },
   {
     "inputs": [
-      { "internalType": "address", "name": "to", "type": "address" },
-      { "internalType": "bytes32", "name": "inputAmount", "type": "bytes32" },
-      { "internalType": "bytes", "name": "proof", "type": "bytes" }
-    ],
-    "name": "transferShares",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "getMyShares",
-    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "getMyVestedShares",
-    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      { "internalType": "uint256", "name": "proposalId", "type": "uint256" },
-      { "internalType": "bytes32", "name": "inputWeight", "type": "bytes32" },
-      { "internalType": "bytes", "name": "proof", "type": "bytes" }
+      {
+        "internalType": "uint256",
+        "name": "proposalId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "externalEuint64",
+        "name": "inputWeight",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes",
+        "name": "proof",
+        "type": "bytes"
+      }
     ],
     "name": "vote",
     "outputs": [],
@@ -125,73 +464,25 @@
   },
   {
     "inputs": [
-      { "internalType": "address", "name": "holder", "type": "address" }
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
     ],
-    "name": "regulatorView",
+    "name": "votes",
     "outputs": [
-      { "internalType": "uint256", "name": "encShares", "type": "uint256" },
-      { "internalType": "uint256", "name": "encVestedShares", "type": "uint256" },
-      { "internalType": "uint256", "name": "encPrice", "type": "uint256" }
+      {
+        "internalType": "euint64",
+        "name": "",
+        "type": "bytes32"
+      }
     ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      { "internalType": "address", "name": "_regulator", "type": "address" }
-    ],
-    "name": "grantRegulator",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "getShareholderCount",
-    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      { "internalType": "address", "name": "holder", "type": "address" }
-    ],
-    "name": "isActiveShareholder",
-    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      { "internalType": "uint256", "name": "i", "type": "uint256" }
-    ],
-    "name": "getShareholderAt",
-    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      { "internalType": "address", "name": "", "type": "address" }
-    ],
-    "name": "shareholders",
-    "outputs": [
-      { "internalType": "address", "name": "holder", "type": "address" },
-      { "internalType": "uint256", "name": "encryptedShares", "type": "uint256" },
-      { "internalType": "uint256", "name": "encryptedVestedShares", "type": "uint256" },
-      { "internalType": "uint256", "name": "encryptedPricePerShare", "type": "uint256" },
-      { "internalType": "bool", "name": "isActive", "type": "bool" }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      { "internalType": "uint256", "name": "", "type": "uint256" },
-      { "internalType": "address", "name": "", "type": "address" }
-    ],
-    "name": "hasVoted",
-    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
     "stateMutability": "view",
     "type": "function"
   }

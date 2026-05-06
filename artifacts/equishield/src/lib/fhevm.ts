@@ -32,14 +32,12 @@ export function onFhevmStatusChange(fn: (s: FhevmStatus) => void): () => void {
 }
 
 // Eager singleton initialization — runs once when the module is imported.
+// Only chainId + networkUrl are needed to fetch the FHE public key.
 const _initPromise: Promise<void> = (async () => {
   try {
     fhevmInstance = await createInstance({
       chainId: 11155111,
-      networkUrl: SEPOLIA_RPC,
-      gatewayUrl: "https://gateway.zama.ai",
-      kmsContractAddress: "0x9D6891A6240D6130c54ae243d8005063D05fE14b",
-      aclContractAddress: "0xFee8407e2f5e3Ee68ad77cAE98c434e637f516EC",
+      networkUrl: "https://ethereum-sepolia-rpc.publicnode.com",
     });
     setStatus("ready");
   } catch (err) {

@@ -5,8 +5,19 @@ import * as dotenv from "dotenv";
 
 dotenv.config();
 
-const MNEMONIC = process.env.MNEMONIC || "test test test test test test test test test test test junk";
 const INFURA_API_KEY = process.env.INFURA_API_KEY || "";
+const RAW_KEY = (process.env.MNEMONIC || "").trim();
+
+// Accept either a raw private key (0x-prefixed hex, 66 chars) or a BIP-39 mnemonic phrase
+const isPrivateKey = /^0x[0-9a-fA-F]{64}$/.test(RAW_KEY);
+const sepoliaAccounts = isPrivateKey
+  ? [RAW_KEY]
+  : {
+      mnemonic: RAW_KEY || "test test test test test test test test test test test junk",
+      path: "m/44'/60'/0'/0",
+      initialIndex: 0,
+      count: 10,
+    };
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -30,12 +41,7 @@ const config: HardhatUserConfig = {
     sepolia: {
       url: `https://sepolia.infura.io/v3/${INFURA_API_KEY}`,
       chainId: 11155111,
-      accounts: {
-        mnemonic: MNEMONIC,
-        path: "m/44'/60'/0'/0",
-        initialIndex: 0,
-        count: 10,
-      },
+      accounts: sepoliaAccounts,
     },
   },
   namedAccounts: {
