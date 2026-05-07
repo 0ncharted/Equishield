@@ -10,6 +10,11 @@ import type { FhevmInstance } from "@zama-fhe/relayer-sdk/bundle";
 
 export type FhevmStatus = "initializing" | "ready" | "error";
 
+/** Convert a Uint8Array to a lowercase hex string — browser-safe, no Buffer needed. */
+function uint8ArrayToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 // Zama Sepolia testnet config — matches @zama-fhe/relayer-sdk SepoliaConfigV1
 const ACL_CONTRACT            = "0xf0Ffdc93b7E186bC2f8CB3dAA75D86d1930A433D";
 const KMS_CONTRACT            = "0xbE0E383937d564D7FF0BC3b46c51f0bF8d5C311A";
@@ -99,8 +104,8 @@ export async function encryptUint64(
     const input = instance.createEncryptedInput(contractAddress, userAddress);
     (input as any).add64(value);
     const result = await (input as any).encrypt();
-    const handle = `0x${Buffer.from(result.handles[0]).toString("hex")}` as `0x${string}`;
-    const proof  = `0x${Buffer.from(result.inputProof).toString("hex")}` as `0x${string}`;
+    const handle = `0x${uint8ArrayToHex(result.handles[0])}` as `0x${string}`;
+    const proof  = `0x${uint8ArrayToHex(result.inputProof)}` as `0x${string}`;
     console.log("[fhevmjs] encryptUint64 success — handle:", handle.slice(0, 18) + "...");
     return { handle, proof };
   } catch (err) {
@@ -128,9 +133,9 @@ export async function encryptTwoUint64(
     (input as any).add64(value0);
     (input as any).add64(value1);
     const result = await (input as any).encrypt();
-    const handle0 = `0x${Buffer.from(result.handles[0]).toString("hex")}` as `0x${string}`;
-    const handle1 = `0x${Buffer.from(result.handles[1]).toString("hex")}` as `0x${string}`;
-    const proof   = `0x${Buffer.from(result.inputProof).toString("hex")}` as `0x${string}`;
+    const handle0 = `0x${uint8ArrayToHex(result.handles[0])}` as `0x${string}`;
+    const handle1 = `0x${uint8ArrayToHex(result.handles[1])}` as `0x${string}`;
+    const proof   = `0x${uint8ArrayToHex(result.inputProof)}` as `0x${string}`;
     console.log("[fhevmjs] encryptTwoUint64 success — handle0:", handle0.slice(0, 18) + "...");
     return { handle0, handle1, proof };
   } catch (err) {

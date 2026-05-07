@@ -78,6 +78,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
-    "@zama-fhe/relayer-sdk": "0.4.2"
+    "@zama-fhe/relayer-sdk": "0.4.2",
+    "buffer": "^6.0.3"
   }
 }
