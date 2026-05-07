@@ -20,6 +20,9 @@ export default function InvestorPage() {
   const [decryptedVested, setDecryptedVested] = useState<number | null>(null);
   const [isDecrypting, setIsDecrypting] = useState(false);
 
+  // getMyShares() uses msg.sender internally — wagmi passes 'account' as the
+  // eth_call 'from' field, so this correctly reads for the connected wallet.
+  // The ABI type is bytes32 (euint64 handle); wagmi returns it as 0x${string}.
   const { data: sharesHandle } = useReadContract({
     address: EQUISHIELD_ADDRESS,
     abi: EquiShieldABI,
@@ -40,17 +43,25 @@ export default function InvestorPage() {
     if (!address) return;
     setIsDecrypting(true);
     try {
-      const sh = sharesHandle as bigint | undefined;
-      const vh = vestedHandle as bigint | undefined;
+      // Handles come back from wagmi as 0x-prefixed bytes32 hex strings.
+      // decryptUint64 accepts both bigint and hex string.
+      const sh = sharesHandle as `0x${string}` | undefined;
+      const vh = vestedHandle as `0x${string}` | undefined;
 
-      if (!sh || sh === 0n) {
-        toast({ title: "No shares found", description: "This address has no issued shares on-chain.", variant: "destructive" });
+      if (!sh || BigInt(sh) === 0n) {
+        toast({
+          title: "No shares found",
+          description: "This address has no issued shares on-chain.",
+          variant: "destructive",
+        });
         return;
       }
 
       const [shares, vested] = await Promise.all([
         decryptUint64(sh, EQUISHIELD_ADDRESS, address),
-        vh && vh !== 0n ? decryptUint64(vh, EQUISHIELD_ADDRESS, address) : Promise.resolve(0n),
+        vh && BigInt(vh) !== 0n
+          ? decryptUint64(vh, EQUISHIELD_ADDRESS, address)
+          : Promise.resolve(0n),
       ]);
 
       setDecryptedShares(Number(shares));
@@ -84,7 +95,10 @@ export default function InvestorPage() {
         <Card className="max-w-2xl">
           <CardHeader>
             <CardTitle>Vesting Overview</CardTitle>
-            <CardDescription>Your share counts are encrypted end-to-end. Decrypt to view progress.</CardDescription>
+            <CardDescription>
+              Your share counts are encrypted end-to-end. Decrypt to view progress.
+              Data is read for the currently connected wallet ({address ? `${address.slice(0, 8)}...${address.slice(-4)}` : 'not connected'}).
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {decryptedShares !== null && decryptedVested !== null ? (
@@ -112,7 +126,8 @@ export default function InvestorPage() {
                   <Progress value={progress} className="h-3" />
                 </div>
 
-                <Button variant="outline" className="w-full" onClick={() => { setDecryptedShares(null); setDecryptedVested(null); }}>
+                <Button variant="outline" className="w-full"
+                  onClick={() => { setDecryptedShares(null); setDecryptedVested(null); }}>
                   <Lock className="mr-2 h-4 w-4" /> Re-encrypt View
                 </Button>
               </div>

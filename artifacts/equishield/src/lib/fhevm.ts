@@ -15,6 +15,15 @@ function uint8ArrayToHex(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/**
+ * JSON.stringify replacer that serializes BigInt values as decimal strings.
+ * Required when stringifying EIP-712 objects — the domain chainId is a BigInt
+ * in some SDK versions, and JSON.stringify throws on raw BigInt values.
+ */
+function bigIntReplacer(_key: string, value: unknown): unknown {
+  return typeof value === "bigint" ? value.toString() : value;
+}
+
 // Zama Sepolia testnet config — matches @zama-fhe/relayer-sdk SepoliaConfigV1
 const ACL_CONTRACT            = "0xf0Ffdc93b7E186bC2f8CB3dAA75D86d1930A433D";
 const KMS_CONTRACT            = "0xbE0E383937d564D7FF0BC3b46c51f0bF8d5C311A";
@@ -60,13 +69,13 @@ const _initPromise: Promise<void> = (async () => {
     await (initSDK as any)({ thread: 0 });
     console.log("[fhevmjs] WASM loaded. Creating FHE instance for Sepolia...");
     fhevmInstance = await createInstance({
-      aclContractAddress:                     ACL_CONTRACT,
-      kmsContractAddress:                     KMS_CONTRACT,
-      inputVerifierContractAddress:           INPUT_VERIFIER_CONTRACT,
-      verifyingContractAddressDecryption:     VERIFYING_DECRYPTION,
+      aclContractAddress:                       ACL_CONTRACT,
+      kmsContractAddress:                       KMS_CONTRACT,
+      inputVerifierContractAddress:             INPUT_VERIFIER_CONTRACT,
+      verifyingContractAddressDecryption:       VERIFYING_DECRYPTION,
       verifyingContractAddressInputVerification: VERIFYING_INPUT_VERIFY,
-      chainId:         CHAIN_ID,
-      gatewayChainId:  GATEWAY_CHAIN_ID,
+      chainId:             CHAIN_ID,
+      gatewayChainId:      GATEWAY_CHAIN_ID,
       relayerUrl:          RELAYER_URL,
       relayerRouteVersion: 2,
       network:             SEPOLIA_RPC,
@@ -149,13 +158,22 @@ export async function encryptTwoUint64(
  * Decrypt a euint64 handle via Zama relayer re-encryption (userDecrypt).
  * Requires the caller to have been granted FHE.allow() access on-chain.
  * Prompts the user to sign an EIP-712 userDecrypt request.
+ *
+ * @param handle - The encrypted handle. Accepts either a bigint OR a 0x-prefixed
+ *   bytes32 hex string (as returned by wagmi useReadContract for bytes32 outputs).
  */
 export async function decryptUint64(
-  handle: bigint,
+  handle: bigint | `0x${string}`,
   contractAddress: string,
   userAddress: string
 ): Promise<bigint> {
-  if (!handle || handle === 0n) throw new Error("No shares found for this address");
+  // Normalise: wagmi returns euint64 handles as 0x-prefixed bytes32 hex strings,
+  // not as bigints — accept both so callers don't need to convert.
+  const handleBigint: bigint =
+    typeof handle === "bigint" ? handle : BigInt(handle as string);
+
+  if (handleBigint === 0n) throw new Error("No shares found for this address");
+
   try {
     const instance = await getFhevmInstance();
     const { publicKey, privateKey } = instance.generateKeypair() as any;
@@ -170,13 +188,15 @@ export async function decryptUint64(
       durationDays
     );
 
+    // JSON.stringify with a BigInt replacer — the EIP-712 domain's chainId
+    // (and possibly other fields) may be a BigInt, which JSON.stringify rejects.
     const signature = await (window as any).ethereum.request({
       method: "eth_signTypedData_v4",
-      params: [userAddress, JSON.stringify(eip712)],
+      params: [userAddress, JSON.stringify(eip712, bigIntReplacer)],
     });
 
     // Convert bigint handle to bytes32 hex string (0x-prefixed, 32 bytes = 64 hex chars)
-    const handleHex = `0x${handle.toString(16).padStart(64, "0")}` as `0x${string}`;
+    const handleHex = `0x${handleBigint.toString(16).padStart(64, "0")}` as `0x${string}`;
 
     const results = await (instance as any).userDecrypt(
       [{ handle: handleHex, contractAddress }],
@@ -191,6 +211,8 @@ export async function decryptUint64(
 
     const clearValue = (results as Record<string, any>)[handleHex];
     if (!clearValue) throw new Error("No decrypted value returned for handle " + handleHex);
+
+    // clearValue.value is bigint for euint64 — BigInt() is safe on bigint input too
     return BigInt(clearValue.value);
   } catch (err) {
     const msg = (err as any)?.message ?? String(err);

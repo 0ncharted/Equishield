@@ -38,6 +38,8 @@ export default function AdminPage() {
   const { writeContractAsync, data: txHash, error: txError, isPending } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
 
+  const [isEncrypting, setIsEncrypting] = useState(false);
+
   // Batch state
   const [batchIssueText, setBatchIssueText] = useState('');
   const [batchVestText, setBatchVestText] = useState('');
@@ -70,10 +72,12 @@ export default function AdminPage() {
 
   async function onIssueSubmit(data: z.infer<typeof issueSharesSchema>) {
     if (!address) return toast({ title: "Wallet not connected", variant: "destructive" });
+    setIsEncrypting(true);
     try {
       console.log("[issueShares] encrypting shares:", data.shares, "price:", data.price);
       const enc = await encryptTwoUint64(BigInt(data.shares), BigInt(data.price), EQUISHIELD_ADDRESS, address);
       console.log("[issueShares] encryption successful — handle0:", enc.handle0, "handle1:", enc.handle1);
+      setIsEncrypting(false);
       await writeContractAsync({
         address: EQUISHIELD_ADDRESS,
         abi: EquiShieldABI,
@@ -83,6 +87,7 @@ export default function AdminPage() {
       toast({ title: "Shares Issued", description: `Transaction submitted for ${data.holder.slice(0, 10)}...` });
       issueForm.reset();
     } catch (err: any) {
+      setIsEncrypting(false);
       console.error("[issueShares] failed:", err);
       toast({ title: "Failed", description: err.message, variant: "destructive" });
     }
@@ -90,10 +95,12 @@ export default function AdminPage() {
 
   async function onVestSubmit(data: z.infer<typeof vestSharesSchema>) {
     if (!address) return toast({ title: "Wallet not connected", variant: "destructive" });
+    setIsEncrypting(true);
     try {
       console.log("[vestShares] encrypting amount:", data.amount);
       const encryptedAmount = await encryptUint64(BigInt(data.amount), EQUISHIELD_ADDRESS, address);
       console.log("[vestShares] encryption successful, handle:", encryptedAmount.handle);
+      setIsEncrypting(false);
       await writeContractAsync({
         address: EQUISHIELD_ADDRESS,
         abi: EquiShieldABI,
@@ -103,6 +110,7 @@ export default function AdminPage() {
       toast({ title: "Vesting Triggered", description: `Transaction submitted for ${data.holder.slice(0, 10)}...` });
       vestForm.reset();
     } catch (err: any) {
+      setIsEncrypting(false);
       console.error("[vestShares] failed:", err);
       toast({ title: "Failed", description: err.message, variant: "destructive" });
     }
@@ -280,9 +288,13 @@ export default function AdminPage() {
                       </FormItem>
                     )} />
                   </div>
-                  <Button type="submit" disabled={isPending || isConfirming || fheNotReady || !address} className="w-full">
-                    {isPending || isConfirming
-                      ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{isConfirming ? 'Confirming...' : 'Encrypting...'}</>
+                  <Button type="submit" disabled={isEncrypting || isPending || isConfirming || fheNotReady || !address} className="w-full">
+                    {isEncrypting
+                      ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Encrypting...</>
+                      : isPending
+                      ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Confirm in wallet...</>
+                      : isConfirming
+                      ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Confirming...</>
                       : <><Lock className="mr-2 h-4 w-4" />Encrypt & Issue</>
                     }
                   </Button>
@@ -313,9 +325,13 @@ export default function AdminPage() {
                       <FormMessage />
                     </FormItem>
                   )} />
-                  <Button type="submit" disabled={isPending || isConfirming || fheNotReady || !address} variant="secondary" className="w-full">
-                    {isPending || isConfirming
-                      ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{isConfirming ? 'Confirming...' : 'Encrypting...'}</>
+                  <Button type="submit" disabled={isEncrypting || isPending || isConfirming || fheNotReady || !address} variant="secondary" className="w-full">
+                    {isEncrypting
+                      ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Encrypting...</>
+                      : isPending
+                      ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Confirm in wallet...</>
+                      : isConfirming
+                      ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Confirming...</>
                       : <><Lock className="mr-2 h-4 w-4" />Encrypt & Vest</>
                     }
                   </Button>

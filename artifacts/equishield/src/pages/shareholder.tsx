@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useState, useEffect, useCallback } from 'react';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
+import { parseAbiItem } from 'viem';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -12,7 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Lock, Unlock, Loader2, Send } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Lock, Unlock, Loader2, Send, ExternalLink, History } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const transferSchema = z.object({
@@ -20,17 +22,33 @@ const transferSchema = z.object({
   amount: z.string().min(1, "Amount is required"),
 });
 
+type TransferEntry = {
+  to: `0x${string}`;
+  timestamp: number;
+  txHash: `0x${string}`;
+};
+
+const TRANSFER_EVENT = parseAbiItem(
+  'event SharesTransferred(address indexed from, address indexed to, uint256 timestamp)'
+);
+
 export default function ShareholderPage() {
   const { address } = useAccount();
   const { toast } = useToast();
   const fheStatus = useFhevmStatus();
+  const publicClient = usePublicClient();
 
   const [decryptedShares, setDecryptedShares] = useState<string | null>(null);
   const [noShares, setNoShares] = useState(false);
   const [isDecrypting, setIsDecrypting] = useState(false);
+  const [isEncrypting, setIsEncrypting] = useState(false);
+
+  const [transfers, setTransfers] = useState<TransferEntry[]>([]);
+  const [loadingTransfers, setLoadingTransfers] = useState(false);
+  const [transfersLoaded, setTransfersLoaded] = useState(false);
 
   const { writeContract, data: txHash, isPending } = useWriteContract();
-  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash: txHash });
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
 
   const { data: mySharesHandle } = useReadContract({
     address: EQUISHIELD_ADDRESS,
@@ -45,13 +63,54 @@ export default function ShareholderPage() {
     defaultValues: { to: "", amount: "" },
   });
 
+  // ── Transfer history ────────────────────────────────────────────────────
+  const loadTransferHistory = useCallback(async () => {
+    if (!address || !publicClient) return;
+    setLoadingTransfers(true);
+    try {
+      const currentBlock = await publicClient.getBlockNumber();
+      const fromBlock = currentBlock > 100000n ? currentBlock - 100000n : 0n;
+      const logs = await publicClient.getLogs({
+        address: EQUISHIELD_ADDRESS,
+        event: TRANSFER_EVENT,
+        args: { from: address },
+        fromBlock,
+        toBlock: 'latest',
+      });
+      setTransfers(
+        logs.map((log) => ({
+          to: (log.args as any).to as `0x${string}`,
+          timestamp: Number((log.args as any).timestamp ?? 0) * 1000,
+          txHash: log.transactionHash!,
+        }))
+      );
+    } catch (err) {
+      console.error('[transfers] getLogs failed:', err);
+    } finally {
+      setLoadingTransfers(false);
+      setTransfersLoaded(true);
+    }
+  }, [address, publicClient]);
+
+  useEffect(() => {
+    if (address) loadTransferHistory();
+  }, [address, loadTransferHistory]);
+
+  useEffect(() => {
+    if (isConfirmed) {
+      toast({ title: "Transfer Confirmed", description: "Transaction confirmed on-chain." });
+      loadTransferHistory();
+    }
+  }, [isConfirmed, loadTransferHistory, toast]);
+
+  // ── Decrypt balance ─────────────────────────────────────────────────────
   async function handleDecrypt() {
     if (!address) return;
     setIsDecrypting(true);
     setNoShares(false);
     try {
-      const handle = mySharesHandle as bigint | undefined;
-      if (!handle || handle === 0n) {
+      const handle = mySharesHandle as `0x${string}` | undefined;
+      if (!handle || BigInt(handle) === 0n) {
         setNoShares(true);
         return;
       }
@@ -69,25 +128,31 @@ export default function ShareholderPage() {
     }
   }
 
+  // ── Transfer ────────────────────────────────────────────────────────────
   async function onTransferSubmit(data: z.infer<typeof transferSchema>) {
     if (!address) return toast({ title: "Wallet not connected", variant: "destructive" });
+    setIsEncrypting(true);
     try {
       console.log("[transferShares] encrypting amount:", data.amount);
       const encryptedAmount = await encryptUint64(BigInt(data.amount), EQUISHIELD_ADDRESS, address);
       console.log("[transferShares] encryption successful, handle:", encryptedAmount.handle);
+      setIsEncrypting(false);
       writeContract({
         address: EQUISHIELD_ADDRESS,
         abi: EquiShieldABI,
         functionName: 'transferShares',
         args: [data.to as `0x${string}`, encryptedAmount.handle, encryptedAmount.proof],
       });
+      transferForm.reset();
     } catch (err: any) {
+      setIsEncrypting(false);
       console.error("[transferShares] failed:", err);
       toast({ title: "Encryption failed", description: err.message, variant: "destructive" });
     }
   }
 
   const decryptDisabled = !address || isDecrypting || fheStatus !== 'ready';
+  const transferBusy = isEncrypting || isPending || isConfirming;
 
   return (
     <Layout>
@@ -98,6 +163,7 @@ export default function ShareholderPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* ── Position card ── */}
           <Card className="bg-card">
             <CardHeader>
               <CardTitle>Your Position</CardTitle>
@@ -108,9 +174,12 @@ export default function ShareholderPage() {
                 {decryptedShares !== null ? (
                   <div className="text-center">
                     <Unlock className="w-12 h-12 text-primary mx-auto mb-4" />
-                    <div className="text-4xl font-bold font-mono text-foreground mb-2">{Number(decryptedShares).toLocaleString()}</div>
+                    <div className="text-4xl font-bold font-mono text-foreground mb-2">
+                      {Number(decryptedShares).toLocaleString()}
+                    </div>
                     <div className="text-sm text-muted-foreground uppercase tracking-widest mb-1">Your shares</div>
-                    <Button variant="outline" size="sm" className="mt-4" onClick={() => { setDecryptedShares(null); setNoShares(false); }}>
+                    <Button variant="outline" size="sm" className="mt-4"
+                      onClick={() => { setDecryptedShares(null); setNoShares(false); }}>
                       <Lock className="mr-2 h-3 w-3" /> Hide
                     </Button>
                   </div>
@@ -145,6 +214,7 @@ export default function ShareholderPage() {
             </CardContent>
           </Card>
 
+          {/* ── Transfer card ── */}
           <Card>
             <CardHeader>
               <CardTitle>Transfer Shares</CardTitle>
@@ -167,9 +237,13 @@ export default function ShareholderPage() {
                       <FormMessage />
                     </FormItem>
                   )} />
-                  <Button type="submit" disabled={isPending || isConfirming || !address} className="w-full">
-                    {isPending || isConfirming
-                      ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {isConfirming ? 'Confirming...' : 'Sending...'}</>
+                  <Button type="submit" disabled={transferBusy || !address} className="w-full">
+                    {isEncrypting
+                      ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Encrypting...</>
+                      : isPending
+                      ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Confirm in wallet...</>
+                      : isConfirming
+                      ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Confirming...</>
                       : <><Send className="mr-2 h-4 w-4" /> Encrypt & Transfer</>
                     }
                   </Button>
@@ -178,6 +252,62 @@ export default function ShareholderPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* ── Transfer history ── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <History className="w-5 h-5 text-primary" /> Transfer History
+            </CardTitle>
+            <CardDescription>Outgoing transfers sent from your connected wallet.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!address ? (
+              <p className="text-sm text-muted-foreground py-4">Connect wallet to view transfer history.</p>
+            ) : loadingTransfers ? (
+              <div className="flex items-center gap-2 py-4 text-muted-foreground text-sm">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading transfer history...
+              </div>
+            ) : transfers.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4">
+                {transfersLoaded ? "No transfers yet." : "Loading..."}
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>To Address</TableHead>
+                    <TableHead>Timestamp</TableHead>
+                    <TableHead>Tx Hash</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {transfers.map((t) => (
+                    <TableRow key={t.txHash}>
+                      <TableCell className="font-mono text-xs">
+                        {t.to.slice(0, 10)}...{t.to.slice(-6)}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {t.timestamp ? new Date(t.timestamp).toLocaleString() : '—'}
+                      </TableCell>
+                      <TableCell>
+                        <a
+                          href={`https://sepolia.etherscan.io/tx/${t.txHash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-xs text-primary hover:underline font-mono"
+                        >
+                          {t.txHash.slice(0, 10)}...{t.txHash.slice(-4)}
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </Layout>
   );

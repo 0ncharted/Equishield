@@ -1,0 +1,46 @@
+Several issues to fix:
+
+1. BIGINT SERIALIZATION ERROR on decrypt:
+"Do not know how to serialize a BigInt" means JSON.stringify is 
+being called on a BigInt value somewhere in the decrypt flow.
+Fix by converting all BigInt values to strings before any 
+JSON.stringify call. In fhevm.ts, find the decryptUint64 function 
+and wherever the result is processed, wrap BigInt values like this:
+BigInt(value).toString() instead of passing raw BigInt to JSON or state.
+Also check the userDecrypt call return value — convert all BigInt 
+fields to strings or numbers before returning.
+
+2. AUDIT LOOKUP FAILING with "Query Failed":
+The lookup fails because the contract's regulatorView function 
+requires the caller to be the contract owner. The connected wallet 
+0xB0F18Cd80de0B47699ECdCbE7D608B6c2cEC24DF is not the deployer/owner.
+Fix: In the Audit page, change the lookup to call a public view 
+function instead that returns only the non-sensitive public metadata 
+(isActive status, wallet address). Add a note: "Full ciphertext 
+inspection requires connecting as contract owner: 
+0xC552C59aE124d3d1f87d7C7E2B916F396DaB5485"
+
+3. TRANSFER HISTORY in Shareholder dashboard:
+After a transfer transaction confirms, show a history section below 
+the transfer form. Read Transfer events from the contract using 
+getLogs filtered by the connected wallet address as sender.
+Show a table with columns: To Address, Timestamp, Tx Hash (linked 
+to Etherscan Sepolia). If no transfers found show "No transfers yet."
+
+4. WALLET POPUP DELAY (5 seconds):
+This is caused by fhevmjs encrypting before the wagmi contract 
+write is called. The encryption itself takes 2-3 seconds which is 
+normal for FHE. Add a loading state that shows immediately when 
+the button is clicked: change button text to "Encrypting..." 
+with a spinner during the FHE operation, then "Confirm in wallet" 
+once MetaMask pops up. This makes the delay feel intentional 
+rather than broken.
+
+5. INVESTOR VIEW showing wrong state:
+The investor view should show data for the CONNECTED wallet only. 
+Make sure it reads from getMyShares() and getMyVestedShares() 
+using the connected wallet address — not a hardcoded address.
+The wallet 0xB0F18Cd80de0B47699ECdCbE7D608B6c2cEC24DF was issued 
+shares so it should show data after decrypt.
+
+Fix all 5 issues then restart and confirm each one works.
