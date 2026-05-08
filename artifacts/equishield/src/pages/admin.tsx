@@ -712,8 +712,8 @@ export default function AdminPage() {
                       <TableCell>
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                           entry.type === 'Issued'
-                            ? 'bg-blue-500/10 text-blue-400'
-                            : 'bg-purple-500/10 text-purple-400'
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-amber-500/10 text-amber-400'
                         }`}>
                           {entry.type}
                         </span>

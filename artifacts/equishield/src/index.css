@@ -31,62 +31,67 @@
   --radius-lg: var(--radius);
 }
 
+/* ── Zama brand: yellow-400 on near-black ────────────────────────────── */
 :root {
-  --background: 230 25% 10%;
-  --foreground: 210 40% 98%;
-  --border: 230 25% 18%;
-  --input: 230 25% 18%;
-  --ring: 240 100% 65%;
-  
-  --card: 230 25% 12%;
-  --card-foreground: 210 40% 98%;
-  --card-border: 230 25% 18%;
-  
-  --primary: 240 100% 65%;
-  --primary-foreground: 210 40% 98%;
-  
-  --secondary: 230 25% 15%;
-  --secondary-foreground: 210 40% 98%;
-  
-  --muted: 230 25% 15%;
-  --muted-foreground: 215 20% 65%;
-  
-  --accent: 270 100% 65%;
-  --accent-foreground: 210 40% 98%;
-  
+  /* Backgrounds */
+  --background: 0 0% 4%;          /* #0a0a0a */
+  --foreground: 0 0% 100%;        /* #ffffff */
+
+  /* Borders / inputs */
+  --border: 0 0% 16%;             /* #292929 */
+  --input: 0 0% 16%;
+  --ring: 43 96% 56%;             /* yellow-400 focus ring */
+
+  /* Cards / surfaces */
+  --card: 0 0% 10%;               /* #1a1a1a */
+  --card-foreground: 0 0% 100%;
+  --card-border: 0 0% 18%;        /* #2e2e2e */
+
+  /* Primary — Zama yellow-400 #FBBF24 */
+  --primary: 43 96% 56%;
+  --primary-foreground: 0 0% 4%;  /* black text on yellow */
+
+  /* Secondary surface */
+  --secondary: 0 0% 13%;          /* #212121 */
+  --secondary-foreground: 0 0% 100%;
+
+  /* Muted */
+  --muted: 0 0% 13%;
+  --muted-foreground: 0 0% 55%;   /* #8c8c8c */
+
+  /* Accent — yellow-300 #FCD34D for hover / highlights */
+  --accent: 43 96% 65%;
+  --accent-foreground: 0 0% 4%;
+
+  /* Destructive stays red */
   --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 98%;
-  
+  --destructive-foreground: 0 0% 100%;
+
   --app-font-sans: 'Inter', sans-serif;
   --app-font-mono: 'JetBrains Mono', monospace;
   --radius: 0.25rem;
 }
 
+/* Dark class mirrors :root (app always runs in dark mode) */
 .dark {
-  --background: 230 25% 6%;
-  --foreground: 210 40% 98%;
-  --border: 230 25% 18%;
-  --input: 230 25% 18%;
-  --ring: 240 100% 65%;
-  
-  --card: 230 25% 9%;
-  --card-foreground: 210 40% 98%;
-  --card-border: 230 25% 18%;
-  
-  --primary: 240 100% 65%;
-  --primary-foreground: 210 40% 98%;
-  
-  --secondary: 230 25% 15%;
-  --secondary-foreground: 210 40% 98%;
-  
-  --muted: 230 25% 15%;
-  --muted-foreground: 215 20% 65%;
-  
-  --accent: 270 100% 65%;
-  --accent-foreground: 210 40% 98%;
-  
+  --background: 0 0% 4%;
+  --foreground: 0 0% 100%;
+  --border: 0 0% 16%;
+  --input: 0 0% 16%;
+  --ring: 43 96% 56%;
+  --card: 0 0% 10%;
+  --card-foreground: 0 0% 100%;
+  --card-border: 0 0% 18%;
+  --primary: 43 96% 56%;
+  --primary-foreground: 0 0% 4%;
+  --secondary: 0 0% 13%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 0 0% 13%;
+  --muted-foreground: 0 0% 55%;
+  --accent: 43 96% 65%;
+  --accent-foreground: 0 0% 4%;
   --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive-foreground: 0 0% 100%;
 }
 
 @layer base {

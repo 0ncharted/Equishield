@@ -91,11 +91,11 @@ export default function AuditPage() {
         </div>
 
         {/* Regulator note */}
-        <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-4 max-w-2xl text-sm">
+        <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 max-w-2xl text-sm">
           <div className="flex items-start gap-3">
-            <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+            <Info className="w-4 h-4 text-primary mt-0.5 shrink-0" />
             <div className="space-y-1">
-              <p className="font-medium text-blue-400">Regulator Access Note</p>
+              <p className="font-medium text-primary">Regulator Access Note</p>
               <p className="text-muted-foreground">
                 This page reads from the <span className="font-mono text-xs">shareholders()</span> public
                 mapping — available to any caller without restrictions. It exposes the raw euint64 ciphertext
@@ -106,7 +106,7 @@ export default function AuditPage() {
                 decryption rights via <span className="font-mono text-xs">FHE.allow()</span> and requires
                 connecting as the contract owner:
               </p>
-              <p className="font-mono text-xs text-blue-300 break-all">{OWNER_ADDRESS}</p>
+              <p className="font-mono text-xs text-accent break-all">{OWNER_ADDRESS}</p>
             </div>
           </div>
         </div>
