@@ -1,8 +1,12 @@
-# EquiShield — FHE-Encrypted Cap Table Management
+# EquiShield — Confidential On-Chain Cap Table Management with FHE
 
-## What is EquiShield?
+**The $1 Trillion Problem Nobody Has Solved Onchain**
 
-EquiShield is the on-chain equivalent of Carta or Pulley — a cap table management platform built for startups and private companies that need the compliance guarantees of blockchain without sacrificing confidentiality. Every company's most sensitive data lives in its cap table: who owns what percentage, at what valuation, when their shares vest, and how voting power is distributed. Publishing this information on a public blockchain in plaintext is not just impractical — it is commercially and legally untenable. EquiShield solves this by using Zama's Fully Homomorphic Encryption (FHEVM) to keep all share counts, prices, and vesting schedules encrypted on-chain at all times, while still allowing the company to execute share issuances, vesting triggers, governance votes, and compliance audits directly on the encrypted data.
+Every startup and private company has a cap table — a spreadsheet (or Carta/Pulley platform) showing who owns what percentage of the company, at what valuation, with what terms. This is among the most sensitive documents in existence. VCs don't want their ownership stakes public. Employees don't want their options visible to competitors. Founders don't want rivals knowing their dilution.
+
+The moment you tokenize equity on a public chain, everyone can see the full capitalization structure. That’s a competitive intelligence disaster. This is why serious equity tokenization has never happened on Ethereum — the transparency is a dealbreaker.
+
+**EquiShield** is the first institutional-grade confidential cap table platform built on **Zama’s FHEVM**. It keeps every share count, price, vesting schedule, and voting weight fully encrypted on-chain at all times, while still allowing full lifecycle operations: issuance, transfer, vesting, governance voting, and regulator audits — all computed directly on ciphertext.
 
 The platform provides four purpose-built dashboards: an Admin dashboard for the company to issue shares, trigger vesting, and manage the cap table; a Shareholder dashboard for holders to view their own decrypted position and transfer shares; an Investor read-only view for portfolio monitoring and vesting timelines; and a Regulator/Audit view for authorized compliance officers to inspect encrypted handles and review the full event log without exposing raw amounts on-chain.
 
@@ -14,7 +18,7 @@ FHE is the only cryptographic primitive that allows arbitrary computation on cip
 
 ## Tech Stack
 
-- **Smart Contracts**: Solidity 0.8.24 + Zama FHEVM (`@fhevm/solidity`)
+- **Smart Contracts**: Solidity 0.8.24 + Zama FHEVM (@fhevm/solidity v0.11.1)
 - **FHE Operations**: `FHE.fromExternal()`, `FHE.add()`, `FHE.sub()`, `FHE.allowThis()`, `FHE.allow()`
 - **Network Config**: `ZamaEthereumConfig` (extends contract for Sepolia Zama gateway)
 - **Frontend**: React + Vite + Tailwind CSS
@@ -23,12 +27,13 @@ FHE is the only cryptographic primitive that allows arbitrary computation on cip
 - **Development**: Hardhat + hardhat-deploy + TypeChain
 - **Network**: Sepolia testnet (chainId 11155111)
 
-## Deployed Contract
+### Live Deployment
 
-- **Network**: Sepolia Testnet
-- **Contract Address**: `TBD — will be updated after deployment`
-- **Deploy Transaction**: `TBD`
-- **Zama Gateway**: `https://gateway.zama.ai`
+- **Network**: Ethereum Sepolia Testnet
+- **Contract Address**: `0x2E630632415338A37d95bFF009f8667C2D090FA7`
+- **Deploy Transaction**: https://sepolia.etherscan.io/tx/0x369cd591b0de08f2e192da0a93de1378d7867fb7c9a902eb66c72f4bf12f391b
+- **Verified on Etherscan**: https://sepolia.etherscan.io/address/0x2E630632415338A37d95bFF009f8667C2D090FA7
+- **Live App**: https://equishield.replit.app/
 
 ## How to Run Locally
 
