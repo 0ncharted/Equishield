@@ -24,6 +24,12 @@ function bigIntReplacer(_key: string, value: unknown): unknown {
   return typeof value === "bigint" ? value.toString() : value;
 }
 
+/** Normalize a handle (bigint or 0x-prefixed bytes32 hex) to a padded 32-byte hex string. */
+function normalizeHandle(handle: bigint | `0x${string}`): `0x${string}` {
+  const big = typeof handle === "bigint" ? handle : BigInt(handle as string);
+  return `0x${big.toString(16).padStart(64, "0")}` as `0x${string}`;
+}
+
 // Zama Sepolia testnet config — matches @zama-fhe/relayer-sdk SepoliaConfigV1
 const ACL_CONTRACT            = "0xf0Ffdc93b7E186bC2f8CB3dAA75D86d1930A433D";
 const KMS_CONTRACT            = "0xbE0E383937d564D7FF0BC3b46c51f0bF8d5C311A";
@@ -155,49 +161,44 @@ export async function encryptTwoUint64(
 }
 
 /**
- * Decrypt a euint64 handle via Zama relayer re-encryption (userDecrypt).
- * Requires the caller to have been granted FHE.allow() access on-chain.
- * Prompts the user to sign an EIP-712 userDecrypt request.
+ * Decrypt a SINGLE euint64 handle via one userDecrypt call (one wallet signature).
  *
- * @param handle - The encrypted handle. Accepts either a bigint OR a 0x-prefixed
- *   bytes32 hex string (as returned by wagmi useReadContract for bytes32 outputs).
+ * Key facts about the SDK:
+ * - ClearValueType = bigint | boolean | 0x${string}
+ *   results[handleHex] IS the clear value — NOT an object with a .value property.
+ * - HandleContractPair.handle = Uint8Array | string (accepts 0x-prefixed hex strings)
+ * - userDecrypt() takes a handles array; each handle gets its result keyed by its hex
+ *
+ * @param handle - euint64 handle as bigint OR 0x-prefixed bytes32 hex (wagmi's format)
  */
 export async function decryptUint64(
   handle: bigint | `0x${string}`,
   contractAddress: string,
   userAddress: string
 ): Promise<bigint> {
-  // Normalise: wagmi returns euint64 handles as 0x-prefixed bytes32 hex strings,
-  // not as bigints — accept both so callers don't need to convert.
-  const handleBigint: bigint =
-    typeof handle === "bigint" ? handle : BigInt(handle as string);
+  if (handle === undefined || handle === null) {
+    throw new Error("Handle is undefined — share data may still be loading");
+  }
 
+  const handleHex = normalizeHandle(handle);
+  const handleBigint = BigInt(handleHex);
   if (handleBigint === 0n) throw new Error("No shares found for this address");
 
   try {
     const instance = await getFhevmInstance();
     const { publicKey, privateKey } = instance.generateKeypair() as any;
-
     const startTimestamp = Math.floor(Date.now() / 1000) - 600; // 10 min ago
     const durationDays   = 1;
 
-    const eip712 = instance.createEIP712(
-      publicKey,
-      [contractAddress],
-      startTimestamp,
-      durationDays
-    );
+    const eip712 = instance.createEIP712(publicKey, [contractAddress], startTimestamp, durationDays);
 
-    // JSON.stringify with a BigInt replacer — the EIP-712 domain's chainId
-    // (and possibly other fields) may be a BigInt, which JSON.stringify rejects.
+    // JSON.stringify with BigInt replacer — the EIP-712 domain chainId may be BigInt
     const signature = await (window as any).ethereum.request({
       method: "eth_signTypedData_v4",
       params: [userAddress, JSON.stringify(eip712, bigIntReplacer)],
     });
 
-    // Convert bigint handle to bytes32 hex string (0x-prefixed, 32 bytes = 64 hex chars)
-    const handleHex = `0x${handleBigint.toString(16).padStart(64, "0")}` as `0x${string}`;
-
+    console.log("[fhevmjs] userDecrypt — handle:", handleHex.slice(0, 18) + "...");
     const results = await (instance as any).userDecrypt(
       [{ handle: handleHex, contractAddress }],
       privateKey,
@@ -209,14 +210,99 @@ export async function decryptUint64(
       durationDays,
     );
 
-    const clearValue = (results as Record<string, any>)[handleHex];
-    if (!clearValue) throw new Error("No decrypted value returned for handle " + handleHex);
+    // ClearValues = Record<0x${string}, ClearValueType>
+    // ClearValueType = bigint | boolean | 0x${string}
+    // results[handleHex] IS the clear value directly — NOT { value: ... }
+    const clearValue = (results as Record<string, unknown>)[handleHex];
+    if (clearValue === undefined || clearValue === null) {
+      throw new Error("Relayer returned no value for handle " + handleHex + ". Ensure FHE.allow() was called for this address.");
+    }
 
-    // clearValue.value is bigint for euint64 — BigInt() is safe on bigint input too
-    return BigInt(clearValue.value);
+    console.log("[fhevmjs] userDecrypt success — clearValue type:", typeof clearValue);
+    return BigInt(clearValue as bigint);
   } catch (err) {
     const msg = (err as any)?.message ?? String(err);
     console.error("[fhevmjs] decryptUint64 FAILED — message:", msg, "raw:", err);
+    throw err;
+  }
+}
+
+/**
+ * Decrypt MULTIPLE euint64 handles in a single userDecrypt call — ONE wallet signature.
+ *
+ * Use this when you need to decrypt more than one handle for the same user to avoid
+ * prompting multiple wallet signatures. All handles share the same EIP-712 request.
+ *
+ * Returns an array of decrypted bigints in the same order as the input handles.
+ * Handles with value 0n are returned as 0n without being included in the RPC call.
+ *
+ * @param handlePairs - array of { handle, contractAddress } to decrypt
+ * @param userAddress - the connected wallet address (must own the handles via FHE.allow)
+ */
+export async function decryptMultipleUint64(
+  handlePairs: Array<{ handle: bigint | `0x${string}`; contractAddress: string }>,
+  userAddress: string
+): Promise<bigint[]> {
+  if (!handlePairs.length) return [];
+
+  // Normalise all handles and filter out zero handles
+  const normalised = handlePairs.map((pair) => ({
+    hexHandle: normalizeHandle(pair.handle),
+    contractAddress: pair.contractAddress,
+    isZero: BigInt(normalizeHandle(pair.handle)) === 0n,
+  }));
+
+  // Only send non-zero handles to the relayer
+  const nonZero = normalised.filter((h) => !h.isZero);
+
+  if (!nonZero.length) {
+    // All handles are zero — nothing to decrypt
+    return normalised.map(() => 0n);
+  }
+
+  try {
+    const instance = await getFhevmInstance();
+    const { publicKey, privateKey } = instance.generateKeypair() as any;
+    const startTimestamp = Math.floor(Date.now() / 1000) - 600;
+    const durationDays   = 1;
+
+    // contractAddresses for EIP-712 must include all unique contracts
+    const contractAddresses = [...new Set(nonZero.map((h) => h.contractAddress))];
+
+    const eip712 = instance.createEIP712(publicKey, contractAddresses, startTimestamp, durationDays);
+
+    // ONE signature for all handles
+    const signature = await (window as any).ethereum.request({
+      method: "eth_signTypedData_v4",
+      params: [userAddress, JSON.stringify(eip712, bigIntReplacer)],
+    });
+
+    console.log("[fhevmjs] decryptMultipleUint64 — handles:", nonZero.length,
+      nonZero.map((h) => h.hexHandle.slice(0, 14) + "..."));
+
+    const results = await (instance as any).userDecrypt(
+      nonZero.map((h) => ({ handle: h.hexHandle, contractAddress: h.contractAddress })),
+      privateKey,
+      publicKey,
+      signature as string,
+      contractAddresses,
+      userAddress,
+      startTimestamp,
+      durationDays,
+    );
+
+    // Map results back to the original input order
+    return normalised.map((h) => {
+      if (h.isZero) return 0n;
+      const clearValue = (results as Record<string, unknown>)[h.hexHandle];
+      if (clearValue === undefined || clearValue === null) {
+        throw new Error("Relayer returned no value for handle " + h.hexHandle);
+      }
+      return BigInt(clearValue as bigint);
+    });
+  } catch (err) {
+    const msg = (err as any)?.message ?? String(err);
+    console.error("[fhevmjs] decryptMultipleUint64 FAILED — message:", msg, "raw:", err);
     throw err;
   }
 }

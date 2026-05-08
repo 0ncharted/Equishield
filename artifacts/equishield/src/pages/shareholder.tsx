@@ -50,7 +50,7 @@ export default function ShareholderPage() {
   const { writeContract, data: txHash, isPending } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
 
-  const { data: mySharesHandle } = useReadContract({
+  const { data: mySharesHandle, isLoading: sharesLoading } = useReadContract({
     address: EQUISHIELD_ADDRESS,
     abi: EquiShieldABI,
     functionName: 'getMyShares',
@@ -69,7 +69,7 @@ export default function ShareholderPage() {
     setLoadingTransfers(true);
     try {
       const currentBlock = await publicClient.getBlockNumber();
-      const fromBlock = currentBlock > 100000n ? currentBlock - 100000n : 0n;
+      const fromBlock = currentBlock > 49000n ? currentBlock - 49000n : 0n;
       const logs = await publicClient.getLogs({
         address: EQUISHIELD_ADDRESS,
         event: TRANSFER_EVENT,
@@ -105,7 +105,7 @@ export default function ShareholderPage() {
 
   // ── Decrypt balance ─────────────────────────────────────────────────────
   async function handleDecrypt() {
-    if (!address) return;
+    if (isDecrypting || !address) return;
     setIsDecrypting(true);
     setNoShares(false);
     try {
@@ -114,6 +114,7 @@ export default function ShareholderPage() {
         setNoShares(true);
         return;
       }
+      // decryptUint64 correctly reads ClearValueType directly (bigint), not .value
       const decrypted = await decryptUint64(handle, EQUISHIELD_ADDRESS, address);
       setDecryptedShares(decrypted.toString());
       toast({ title: "Decryption Successful", description: "Your shares are now visible." });
@@ -151,7 +152,7 @@ export default function ShareholderPage() {
     }
   }
 
-  const decryptDisabled = !address || isDecrypting || fheStatus !== 'ready';
+  const decryptDisabled = !address || isDecrypting || fheStatus !== 'ready' || sharesLoading;
   const transferBusy = isEncrypting || isPending || isConfirming;
 
   return (
@@ -202,6 +203,8 @@ export default function ShareholderPage() {
                       <Button onClick={handleDecrypt} disabled={decryptDisabled}>
                         {isDecrypting
                           ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Decrypting...</>
+                          : sharesLoading
+                          ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading...</>
                           : fheStatus !== 'ready'
                           ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> FHE Initializing...</>
                           : <><Unlock className="mr-2 h-4 w-4" /> Decrypt Balance</>

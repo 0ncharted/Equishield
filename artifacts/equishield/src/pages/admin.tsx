@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useState, useEffect, useCallback } from 'react';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
+import { parseAbiItem } from 'viem';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -14,9 +15,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Lock, CheckCircle2, AlertCircle, Loader2, ListPlus } from 'lucide-react';
+import { Lock, CheckCircle2, AlertCircle, Loader2, ListPlus, Building2, ExternalLink, History, Pencil, Save, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
+// ── Schemas ─────────────────────────────────────────────────────────────
 const issueSharesSchema = z.object({
   holder: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address"),
   shares: z.string().min(1, "Shares amount is required"),
@@ -30,15 +32,64 @@ const vestSharesSchema = z.object({
 
 type BatchResult = { address: string; status: 'success' | 'failed'; error?: string };
 
+// ── Company Profile ──────────────────────────────────────────────────────
+const PROFILE_KEY = 'equishield:company_profile';
+
+interface CompanyProfile {
+  name: string;
+  ticker: string;
+  totalAuthorized: string;
+  parValue: string;
+}
+
+function loadProfile(): CompanyProfile {
+  try {
+    const raw = localStorage.getItem(PROFILE_KEY);
+    if (raw) return JSON.parse(raw) as CompanyProfile;
+  } catch { /* ignore */ }
+  return { name: '', ticker: '', totalAuthorized: '', parValue: '' };
+}
+
+function saveProfile(p: CompanyProfile) {
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(p));
+}
+
+// ── Transaction log events ───────────────────────────────────────────────
+const ISSUED_EVENT = parseAbiItem(
+  'event SharesIssued(address indexed holder, uint256 timestamp)'
+);
+const VESTED_EVENT = parseAbiItem(
+  'event SharesVested(address indexed holder, uint256 timestamp)'
+);
+
+type TxEntry = {
+  type: 'Issued' | 'Vested';
+  holder: `0x${string}`;
+  timestamp: number;
+  txHash: `0x${string}`;
+};
+
+// ── Component ────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const { address } = useAccount();
   const { toast } = useToast();
   const fheStatus = useFhevmStatus();
+  const publicClient = usePublicClient();
 
   const { writeContractAsync, data: txHash, error: txError, isPending } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
 
   const [isEncrypting, setIsEncrypting] = useState(false);
+
+  // Company Profile
+  const [profile, setProfile] = useState<CompanyProfile>(loadProfile);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileDraft, setProfileDraft] = useState<CompanyProfile>(loadProfile);
+
+  // Transaction History
+  const [txHistory, setTxHistory] = useState<TxEntry[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
 
   // Batch state
   const [batchIssueText, setBatchIssueText] = useState('');
@@ -70,6 +121,67 @@ export default function AdminPage() {
     defaultValues: { holder: "", amount: "" },
   });
 
+  // ── Transaction History loader ──────────────────────────────────────────
+  const loadTxHistory = useCallback(async () => {
+    if (!publicClient) return;
+    setLoadingHistory(true);
+    try {
+      const currentBlock = await publicClient.getBlockNumber();
+      const fromBlock = currentBlock > 49000n ? currentBlock - 49000n : 0n;
+
+      const [issuedLogs, vestedLogs] = await Promise.all([
+        publicClient.getLogs({
+          address: EQUISHIELD_ADDRESS,
+          event: ISSUED_EVENT,
+          fromBlock,
+          toBlock: 'latest',
+        }),
+        publicClient.getLogs({
+          address: EQUISHIELD_ADDRESS,
+          event: VESTED_EVENT,
+          fromBlock,
+          toBlock: 'latest',
+        }),
+      ]);
+
+      const entries: TxEntry[] = [
+        ...issuedLogs.map((l) => ({
+          type: 'Issued' as const,
+          holder: (l.args as any).holder as `0x${string}`,
+          timestamp: Number((l.args as any).timestamp ?? 0) * 1000,
+          txHash: l.transactionHash!,
+        })),
+        ...vestedLogs.map((l) => ({
+          type: 'Vested' as const,
+          holder: (l.args as any).holder as `0x${string}`,
+          timestamp: Number((l.args as any).timestamp ?? 0) * 1000,
+          txHash: l.transactionHash!,
+        })),
+      ];
+
+      // Sort newest first
+      entries.sort((a, b) => b.timestamp - a.timestamp);
+      setTxHistory(entries);
+    } catch (err) {
+      console.error('[txHistory] getLogs failed:', err);
+    } finally {
+      setLoadingHistory(false);
+      setHistoryLoaded(true);
+    }
+  }, [publicClient]);
+
+  useEffect(() => {
+    loadTxHistory();
+  }, [loadTxHistory]);
+
+  useEffect(() => {
+    if (isConfirmed) {
+      toast({ title: "Transaction Confirmed" });
+      loadTxHistory();
+    }
+  }, [isConfirmed, loadTxHistory, toast]);
+
+  // ── Issue Shares ────────────────────────────────────────────────────────
   async function onIssueSubmit(data: z.infer<typeof issueSharesSchema>) {
     if (!address) return toast({ title: "Wallet not connected", variant: "destructive" });
     setIsEncrypting(true);
@@ -93,6 +205,7 @@ export default function AdminPage() {
     }
   }
 
+  // ── Vest Shares ─────────────────────────────────────────────────────────
   async function onVestSubmit(data: z.infer<typeof vestSharesSchema>) {
     if (!address) return toast({ title: "Wallet not connected", variant: "destructive" });
     setIsEncrypting(true);
@@ -116,7 +229,7 @@ export default function AdminPage() {
     }
   }
 
-  // --- Batch Issue ---
+  // ── Batch Issue ─────────────────────────────────────────────────────────
   async function handleBatchIssue() {
     if (!address) return toast({ title: "Wallet not connected", variant: "destructive" });
     const lines = batchIssueText.trim().split('\n').filter(Boolean);
@@ -130,10 +243,8 @@ export default function AdminPage() {
       const line = lines[i].trim();
       const parts = line.split(',').map(s => s.trim());
       const [holderAddr, sharesStr, priceStr] = parts;
-
       setBatchIssueProgress({ current: i + 1, total: lines.length });
 
-      // Validate
       if (parts.length < 3 || !/^0x[a-fA-F0-9]{40}$/.test(holderAddr)) {
         results.push({ address: holderAddr ?? line, status: 'failed', error: 'Invalid format (expected: address,shares,price)' });
         continue;
@@ -146,9 +257,7 @@ export default function AdminPage() {
       }
 
       try {
-        console.log("[batchIssue] encrypting for", holderAddr, "shares:", sharesN, "price:", priceN);
         const enc = await encryptTwoUint64(BigInt(Math.round(sharesN)), BigInt(Math.round(priceN)), EQUISHIELD_ADDRESS, address);
-        console.log("[batchIssue] encryption successful for", holderAddr);
         await writeContractAsync({
           address: EQUISHIELD_ADDRESS,
           abi: EquiShieldABI,
@@ -157,7 +266,6 @@ export default function AdminPage() {
         });
         results.push({ address: holderAddr, status: 'success' });
       } catch (err: any) {
-        console.error("[batchIssue] failed for", holderAddr, err);
         results.push({ address: holderAddr, status: 'failed', error: err.message?.slice(0, 80) });
       }
     }
@@ -171,7 +279,7 @@ export default function AdminPage() {
     });
   }
 
-  // --- Batch Vest ---
+  // ── Batch Vest ──────────────────────────────────────────────────────────
   async function handleBatchVest() {
     if (!address) return toast({ title: "Wallet not connected", variant: "destructive" });
     const lines = batchVestText.trim().split('\n').filter(Boolean);
@@ -185,7 +293,6 @@ export default function AdminPage() {
       const line = lines[i].trim();
       const parts = line.split(',').map(s => s.trim());
       const [holderAddr, amountStr] = parts;
-
       setBatchVestProgress({ current: i + 1, total: lines.length });
 
       if (parts.length < 2 || !/^0x[a-fA-F0-9]{40}$/.test(holderAddr)) {
@@ -255,7 +362,92 @@ export default function AdminPage() {
           )}
         </div>
 
-        {/* Single Issue + Vest */}
+        {/* ── Company Profile ── */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-primary" />
+                <CardTitle>Company Profile</CardTitle>
+              </div>
+              {!editingProfile ? (
+                <Button variant="ghost" size="sm" onClick={() => { setProfileDraft(profile); setEditingProfile(true); }}>
+                  <Pencil className="w-4 h-4 mr-1" /> Edit
+                </Button>
+              ) : (
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setEditingProfile(false)}>
+                    <X className="w-4 h-4 mr-1" /> Cancel
+                  </Button>
+                  <Button size="sm" onClick={() => { saveProfile(profileDraft); setProfile(profileDraft); setEditingProfile(false); toast({ title: "Profile saved" }); }}>
+                    <Save className="w-4 h-4 mr-1" /> Save
+                  </Button>
+                </div>
+              )}
+            </div>
+            <CardDescription>Off-chain display metadata stored locally — not written to the blockchain.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {editingProfile ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Company Name</label>
+                  <Input
+                    placeholder="Acme Corp"
+                    value={profileDraft.name}
+                    onChange={e => setProfileDraft(d => ({ ...d, name: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Ticker Symbol</label>
+                  <Input
+                    placeholder="ACME"
+                    value={profileDraft.ticker}
+                    onChange={e => setProfileDraft(d => ({ ...d, ticker: e.target.value.toUpperCase() }))}
+                    maxLength={10}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Total Authorized Shares</label>
+                  <Input
+                    placeholder="10,000,000"
+                    type="number"
+                    min="1"
+                    value={profileDraft.totalAuthorized}
+                    onChange={e => setProfileDraft(d => ({ ...d, totalAuthorized: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Par Value Per Share ($)</label>
+                  <Input
+                    placeholder="0.0001"
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    value={profileDraft.parValue}
+                    onChange={e => setProfileDraft(d => ({ ...d, parValue: e.target.value }))}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {[
+                  { label: 'Company Name', value: profile.name || '—' },
+                  { label: 'Ticker Symbol', value: profile.ticker || '—' },
+                  { label: 'Authorized Shares', value: profile.totalAuthorized ? Number(profile.totalAuthorized).toLocaleString() : '—' },
+                  { label: 'Par Value', value: profile.parValue ? `$${profile.parValue}` : '—' },
+                ].map(({ label, value }) => (
+                  <div key={label} className="bg-muted/40 rounded-md p-4 border border-border">
+                    <div className="text-xs text-muted-foreground uppercase tracking-widest mb-1">{label}</div>
+                    <div className="font-semibold font-mono text-sm text-foreground">{value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── Single Issue + Vest ── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <Card>
             <CardHeader>
@@ -341,7 +533,7 @@ export default function AdminPage() {
           </Card>
         </div>
 
-        {/* Batch Issue */}
+        {/* ── Batch Issue ── */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -372,10 +564,7 @@ export default function AdminPage() {
               <div className="space-y-1">
                 {batchIssueResults.map((r, i) => (
                   <div key={i} className={`flex items-center gap-2 text-xs font-mono p-2 rounded ${r.status === 'success' ? 'bg-green-500/10 text-green-500' : 'bg-destructive/10 text-destructive'}`}>
-                    {r.status === 'success'
-                      ? <CheckCircle2 className="w-3 h-3 shrink-0" />
-                      : <AlertCircle className="w-3 h-3 shrink-0" />
-                    }
+                    {r.status === 'success' ? <CheckCircle2 className="w-3 h-3 shrink-0" /> : <AlertCircle className="w-3 h-3 shrink-0" />}
                     <span className="truncate">{r.address.slice(0, 14)}...</span>
                     {r.error && <span className="text-destructive/80 truncate">{r.error}</span>}
                   </div>
@@ -386,11 +575,7 @@ export default function AdminPage() {
                 </p>
               </div>
             )}
-            <Button
-              onClick={handleBatchIssue}
-              disabled={!batchIssueText.trim() || !!batchIssueProgress || fheNotReady || !address}
-              className="w-full"
-            >
+            <Button onClick={handleBatchIssue} disabled={!batchIssueText.trim() || !!batchIssueProgress || fheNotReady || !address} className="w-full">
               {batchIssueProgress
                 ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processing {batchIssueProgress.current}/{batchIssueProgress.total}...</>
                 : <><ListPlus className="mr-2 h-4 w-4" />Batch Encrypt & Issue</>
@@ -399,7 +584,7 @@ export default function AdminPage() {
           </CardContent>
         </Card>
 
-        {/* Batch Vest */}
+        {/* ── Batch Vest ── */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -408,7 +593,7 @@ export default function AdminPage() {
             <CardDescription>
               Paste multiple entries, one per line: <code className="text-xs bg-muted px-1 py-0.5 rounded">address,vestedAmount</code>
               <br />
-              <span className="text-xs text-muted-foreground mt-1 block">Example: 0xABC...,250 — negative amounts are rejected</span>
+              <span className="text-xs text-muted-foreground mt-1 block">Example: 0xABC...,250</span>
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -430,10 +615,7 @@ export default function AdminPage() {
               <div className="space-y-1">
                 {batchVestResults.map((r, i) => (
                   <div key={i} className={`flex items-center gap-2 text-xs font-mono p-2 rounded ${r.status === 'success' ? 'bg-green-500/10 text-green-500' : 'bg-destructive/10 text-destructive'}`}>
-                    {r.status === 'success'
-                      ? <CheckCircle2 className="w-3 h-3 shrink-0" />
-                      : <AlertCircle className="w-3 h-3 shrink-0" />
-                    }
+                    {r.status === 'success' ? <CheckCircle2 className="w-3 h-3 shrink-0" /> : <AlertCircle className="w-3 h-3 shrink-0" />}
                     <span className="truncate">{r.address.slice(0, 14)}...</span>
                     {r.error && <span className="text-destructive/80 truncate">{r.error}</span>}
                   </div>
@@ -444,12 +626,7 @@ export default function AdminPage() {
                 </p>
               </div>
             )}
-            <Button
-              onClick={handleBatchVest}
-              disabled={!batchVestText.trim() || !!batchVestProgress || fheNotReady || !address}
-              variant="secondary"
-              className="w-full"
-            >
+            <Button onClick={handleBatchVest} disabled={!batchVestText.trim() || !!batchVestProgress || fheNotReady || !address} variant="secondary" className="w-full">
               {batchVestProgress
                 ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processing {batchVestProgress.current}/{batchVestProgress.total}...</>
                 : <><ListPlus className="mr-2 h-4 w-4" />Batch Encrypt & Vest</>
@@ -458,7 +635,7 @@ export default function AdminPage() {
           </CardContent>
         </Card>
 
-        {/* Cap Table */}
+        {/* ── Cap Table Overview ── */}
         <Card>
           <CardHeader>
             <CardTitle className="flex justify-between items-center">
@@ -493,6 +670,76 @@ export default function AdminPage() {
                 )}
               </TableBody>
             </Table>
+          </CardContent>
+        </Card>
+
+        {/* ── Transaction History ── */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <History className="w-5 h-5 text-primary" />
+                <CardTitle>Transaction History</CardTitle>
+              </div>
+              <Button variant="ghost" size="sm" onClick={loadTxHistory} disabled={loadingHistory}>
+                {loadingHistory ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Refresh'}
+              </Button>
+            </div>
+            <CardDescription>All SharesIssued and SharesVested events from the contract on Sepolia.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loadingHistory ? (
+              <div className="flex items-center gap-2 py-6 text-muted-foreground text-sm">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading events from chain...
+              </div>
+            ) : txHistory.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4">
+                {historyLoaded ? "No on-chain events found yet. Issue or vest shares to populate this log." : "Loading..."}
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Event Type</TableHead>
+                    <TableHead>Holder Address</TableHead>
+                    <TableHead>Timestamp</TableHead>
+                    <TableHead>Tx Hash</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {txHistory.map((entry) => (
+                    <TableRow key={entry.txHash + entry.type}>
+                      <TableCell>
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                          entry.type === 'Issued'
+                            ? 'bg-blue-500/10 text-blue-400'
+                            : 'bg-purple-500/10 text-purple-400'
+                        }`}>
+                          {entry.type}
+                        </span>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {entry.holder.slice(0, 10)}...{entry.holder.slice(-6)}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : '—'}
+                      </TableCell>
+                      <TableCell>
+                        <a
+                          href={`https://sepolia.etherscan.io/tx/${entry.txHash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-xs text-primary hover:underline font-mono"
+                        >
+                          {entry.txHash.slice(0, 10)}...{entry.txHash.slice(-4)}
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>

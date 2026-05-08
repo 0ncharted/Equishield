@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAccount, useReadContract } from 'wagmi';
 import { EQUISHIELD_ADDRESS } from '@/lib/contract';
 import EquiShieldABI from '@/abi/EquiShield.json';
-import { decryptUint64 } from '@/lib/fhevm';
+import { decryptMultipleUint64 } from '@/lib/fhevm';
 import { useFhevmStatus } from '@/hooks/useFhevmStatus';
 import Layout from '@/components/layout';
 import { Button } from '@/components/ui/button';
@@ -20,10 +20,10 @@ export default function InvestorPage() {
   const [decryptedVested, setDecryptedVested] = useState<number | null>(null);
   const [isDecrypting, setIsDecrypting] = useState(false);
 
-  // getMyShares() uses msg.sender internally — wagmi passes 'account' as the
-  // eth_call 'from' field, so this correctly reads for the connected wallet.
-  // The ABI type is bytes32 (euint64 handle); wagmi returns it as 0x${string}.
-  const { data: sharesHandle } = useReadContract({
+  // getMyShares() uses msg.sender — wagmi passes 'account' as the eth_call 'from'
+  // field, so this correctly reads for the connected wallet.
+  // ABI type: euint64 (stored as bytes32 handle); wagmi returns it as 0x${string}.
+  const { data: sharesHandle, isLoading: sharesLoading } = useReadContract({
     address: EQUISHIELD_ADDRESS,
     abi: EquiShieldABI,
     functionName: 'getMyShares',
@@ -31,7 +31,7 @@ export default function InvestorPage() {
     query: { enabled: !!address },
   });
 
-  const { data: vestedHandle } = useReadContract({
+  const { data: vestedHandle, isLoading: vestedLoading } = useReadContract({
     address: EQUISHIELD_ADDRESS,
     abi: EquiShieldABI,
     functionName: 'getMyVestedShares',
@@ -40,11 +40,13 @@ export default function InvestorPage() {
   });
 
   async function handleDecrypt() {
+    // Guard: prevent double-invocation
+    if (isDecrypting) return;
     if (!address) return;
+
     setIsDecrypting(true);
     try {
       // Handles come back from wagmi as 0x-prefixed bytes32 hex strings.
-      // decryptUint64 accepts both bigint and hex string.
       const sh = sharesHandle as `0x${string}` | undefined;
       const vh = vestedHandle as `0x${string}` | undefined;
 
@@ -57,12 +59,22 @@ export default function InvestorPage() {
         return;
       }
 
-      const [shares, vested] = await Promise.all([
-        decryptUint64(sh, EQUISHIELD_ADDRESS, address),
-        vh && BigInt(vh) !== 0n
-          ? decryptUint64(vh, EQUISHIELD_ADDRESS, address)
-          : Promise.resolve(0n),
-      ]);
+      // Use decryptMultipleUint64 to decrypt both handles with ONE wallet signature.
+      // Passing both handles at once calls userDecrypt() with a handles array — the
+      // SDK signs a single EIP-712 request covering all handles simultaneously.
+      const handlePairs: Array<{ handle: `0x${string}`; contractAddress: string }> = [
+        { handle: sh, contractAddress: EQUISHIELD_ADDRESS },
+      ];
+      const hasVested = !!vh && BigInt(vh) !== 0n;
+      if (hasVested) {
+        handlePairs.push({ handle: vh!, contractAddress: EQUISHIELD_ADDRESS });
+      }
+
+      console.log("[investor] decrypting", handlePairs.length, "handle(s) with a single signature");
+      const results = await decryptMultipleUint64(handlePairs, address);
+
+      const shares = results[0];
+      const vested = hasVested ? results[1] : 0n;
 
       setDecryptedShares(Number(shares));
       setDecryptedVested(Number(vested));
@@ -82,7 +94,8 @@ export default function InvestorPage() {
     ? decryptedShares - decryptedVested
     : null;
 
-  const decryptDisabled = !address || isDecrypting || fheStatus !== 'ready';
+  const dataLoading = sharesLoading || vestedLoading;
+  const decryptDisabled = !address || isDecrypting || fheStatus !== 'ready' || dataLoading;
 
   return (
     <Layout>
@@ -97,7 +110,8 @@ export default function InvestorPage() {
             <CardTitle>Vesting Overview</CardTitle>
             <CardDescription>
               Your share counts are encrypted end-to-end. Decrypt to view progress.
-              Data is read for the currently connected wallet ({address ? `${address.slice(0, 8)}...${address.slice(-4)}` : 'not connected'}).
+              Data is read for the currently connected wallet (
+              {address ? `${address.slice(0, 8)}...${address.slice(-4)}` : 'not connected'}).
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -137,6 +151,7 @@ export default function InvestorPage() {
                 <h3 className="text-lg font-medium mb-2">Data Encrypted</h3>
                 <p className="text-muted-foreground text-center mb-6 max-w-sm">
                   Your vesting schedule and total shares are currently hidden using Fully Homomorphic Encryption.
+                  Decrypting both values requires one wallet signature.
                 </p>
                 {!address ? (
                   <p className="text-sm text-muted-foreground">Connect wallet to decrypt</p>
@@ -144,9 +159,11 @@ export default function InvestorPage() {
                   <Button onClick={handleDecrypt} disabled={decryptDisabled}>
                     {isDecrypting
                       ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Decrypting...</>
+                      : dataLoading
+                      ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading on-chain data...</>
                       : fheStatus !== 'ready'
                       ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> FHE Initializing...</>
-                      : <><Unlock className="mr-2 h-4 w-4" /> Decrypt Records</>
+                      : <><Unlock className="mr-2 h-4 w-4" /> Decrypt Records (1 signature)</>
                     }
                   </Button>
                 )}
